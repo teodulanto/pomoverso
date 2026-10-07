@@ -32,3 +32,7 @@ Se guarda en el navegador (`localStorage`), por equipo. Desde **Mundos** puedes 
 
 - Un solo archivo, sin build. Three.js 0.170 por importmap.
 - `?free` en la URL abre todos los mundos (para pruebas). `?debug` expone `window.__pw`.
+
+## Licencia
+
+[MIT](LICENSE). Úsalo, modifícalo y compártelo libremente; solo conserva el aviso de copyright.
