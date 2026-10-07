@@ -4,3 +4,4 @@ _versiones-anteriores/
 *.test.html
 .vercel/
 .claude/
+demo/
