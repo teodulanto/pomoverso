@@ -6,7 +6,7 @@ Un temporizador Pomodoro gamificado en 3D. Cada pomodoro que completas hace crec
 
 Online: https://pomo-verso.vercel.app
 
-O en local: abre `index.html` en el navegador (necesita conexión: carga Three.js desde jsDelivr).
+O en local: `npm install && npm run dev`.
 
 - Elige el tiempo con los botones (5, 15, 25, 45 o 60 min) o en Ajustes.
 - **Iniciar** / **Espacio**: empieza o pausa. Durante el pomodoro el reloj pasa a la esquina para ver el mundo.
@@ -28,10 +28,16 @@ Ganas ~10 monedas por pomodoro de 25 min, +10 por el primero del día y +15 al s
 
 Se guarda en el navegador (`localStorage`), por equipo. Desde **Mundos** puedes exportarlo a un archivo, importarlo en otro equipo o reiniciarlo.
 
-## Notas técnicas
+## Desarrollo y colaboración
 
-- Un solo archivo, sin build. Three.js 0.170 por importmap.
-- `?free` en la URL abre todos los mundos (para pruebas). `?debug` expone `window.__pw`.
+```bash
+npm install
+npm run dev
+```
+
+El código está dividido en módulos (`src/core`, `src/ui`, `src/lib`, `src/worlds`) y **crear un mundo nuevo** es tan simple como copiar `src/worlds/_plantilla.js`. Lee [CONTRIBUTING.md](CONTRIBUTING.md) para la guía completa.
+
+Detalles técnicos: Vite + Three.js 0.170, sin imágenes ni modelos externos (todo se genera con código). En la URL, `?free` abre todos los mundos y `?debug` expone `window.__pw` para pruebas.
 
 ## Licencia
 

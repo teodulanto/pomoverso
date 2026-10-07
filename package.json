@@ -1,0 +1,22 @@
+{
+  "name": "pomoverso",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Un temporizador Pomodoro gamificado en 3D: cada pomodoro hace crecer un mundo.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "vite": "^6.0.0"
+  }
+}
