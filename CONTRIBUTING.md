@@ -41,6 +41,15 @@ src/
 
 El contrato exacto de un mundo (qué debe devolver `build...()`) está explicado al principio de `_plantilla.js`.
 
+### Darle vida con personajes
+
+Cada mundo cuenta una pequeña historia ligada al progreso `p` del pomodoro (por ejemplo: carga del barco, siembra y riego, cuenta atrás del cohete). Las piezas para hacerlo están en `src/lib/`:
+
+- `people.js`: `makeActor({ shirt, pants, hat, scale... })` crea una persona; `walkTo(actor, x, z, dt, t, pose, [mirarX, mirarZ], { speed, ground })` la hace caminar y aplicar una pose: `carry`, `wave`, `cheer`, `bend`, `water`, `sit`, `lookUp`, `steer`. También `makeDog()`.
+- `effects.js`: `makeConfetti(grupo)` (llámalo con `burst(x, y, z)` cuando termina el enfoque) y `makeWaterDrops(grupo)`.
+
+Mira `forest.js` (función `story`) para un ejemplo corto y legible.
+
 ### Reglas del proyecto
 
 - **Sin recursos externos:** nada de imágenes, modelos 3D, fuentes ni sonidos descargados. Todo se genera con código (texturas en canvas, geometría procedural). Así el proyecto es ligero y no hay problemas de derechos.

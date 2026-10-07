@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { buildIsland, edgeR } from '../lib/island.js';
 import { clamp01, fbm, lerp, mulberry, sstep, vnoise } from '../lib/math.js';
+import { makeConfetti } from '../lib/effects.js';
+import { makeActor, makeDog, walkTo } from '../lib/people.js';
 import { makeCampHD } from '../lib/props.js';
 import { blobShadow, dotTex, groundTex, plankTex, rockTex, shingleTex } from '../lib/textures.js';
 import { makeUnlocker, pop, shade } from '../lib/three-utils.js';
@@ -80,7 +82,7 @@ function makeFarmer() {
   const dm = new THREE.PointsMaterial({ map: dotTex, color: 0x9fd8ff, size: 0.07, transparent: true, depthWrite: false, opacity: 0 });
   const drops = new THREE.Points(dg, dm); drops.frustumCulled = false; root.add(drops);
   const life = Array.from({ length: DR }, (_, i) => i / DR); let phase = 0;
-  return { root, update(dt, t, { walk, bend, water, sit }) {
+  return { root, update(dt, t, { walk, bend, water, sit, cheer = 0 }) {
     phase += dt * (3 + walk * 7);
     const w = clamp01(walk);
     legL.rotation.x = Math.sin(phase) * 0.7 * w * (1 - sit) - 1.35 * sit; legR.rotation.x = -Math.sin(phase) * 0.7 * w * (1 - sit) - 1.35 * sit;
@@ -90,6 +92,7 @@ function makeFarmer() {
     const plant = Math.sin(t * 7) * 0.35 * bend;
     armL.rotation.x = -Math.sin(phase) * 0.6 * w - bend * 0.9 + plant - sit * 0.5 - water * 0.2;
     armR.rotation.x = Math.sin(phase) * 0.6 * w - bend * 0.9 - plant - sit * 0.5 - water * 1.15;
+    if (cheer) { const k = Math.sin(t * 12) * 0.35; armL.rotation.x = -2.9 + k; armR.rotation.x = -2.9 - k; hips.position.y = 0.5 + Math.abs(Math.sin(t * 7)) * 0.12; }
     can.visible = water > 0.05; can.rotation.x = water * 0.55 + Math.sin(t * 2) * 0.05 * water;
     dm.opacity = water > 0.3 ? 0.8 : 0;
     life.forEach((u, i) => { life[i] = (u + dt * 1.3) % 1; const k = life[i]; dp[i * 3] = 0.2 + Math.sin(i * 2.1) * 0.03; dp[i * 3 + 1] = 0.62 - k * k * 0.62 + (1 - k) * 0.05; dp[i * 3 + 2] = 0.52 + k * 0.28; });
@@ -266,6 +269,43 @@ export function buildFarm() {
   const fireflies = new THREE.Points(ffg, ffm); fireflies.frustumCulled = false; g.add(fireflies);
 
   // ranuras para recompensas
+  // ── historia: la ayudante trae las semillas, el perro acompaña y todos celebran la cosecha ──
+  const helper = makeActor({ shirt: 0xe8789a, pants: 0x6a4a8a, hat: 'straw', capColor: 0xf0d27a, hair: 0x5a3a22, scale: 0.62 });
+  const dog = makeDog({ fur: 0xc98a4b, scale: 0.8 });
+  g.add(helper.root, dog.root);
+  const bench = new THREE.Group();   // banco donde la ayudante descansa mientras crece el trigo
+  { const wood = new THREE.MeshStandardMaterial({ map: plankTex, color: 0xc9a074, roughness: 0.9 });
+    const seat = shade(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.22), wood)); seat.position.y = 0.26; bench.add(seat);
+    const back = shade(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.04), wood)); back.position.set(0, 0.42, -0.1); bench.add(back);
+    [-0.28, 0.28].forEach(x => { const lg = shade(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.2), wood)); lg.position.set(x, 0.13, 0); bench.add(lg); }); }
+  bench.position.set(-3.3, farmH(-3.3, 0.9), 0.9); bench.rotation.y = Math.PI / 2; g.add(bench);
+  const conf = makeConfetti(g, 100, 0.1);
+  const H_SPAWN = [-2.9, -1.3], BENCH_AT = [-3.0, 0.9], WAVE_AT = [-2.3, -0.3];
+  let fStoryPrev = 'focus';
+  const placeActor = (a, x, z) => a.root.position.set(x, farmH(x, z) + 0.02, z);
+  const resetStory = () => { placeActor(helper, H_SPAWN[0], H_SPAWN[1]); helper.root.rotation.y = 0.8; placeActor(dog, H_SPAWN[0] + 0.5, H_SPAWN[1] + 0.2); };
+  resetStory();
+  const story = (p, focus, t, dt) => {
+    const opts = { speed: 0.5, ground: farmH }, fp = farmer.root.position;
+    // ayudante
+    helper.crate.visible = false; let ht, hp = {};
+    if (!focus) { ht = [3.5, 2.2]; hp = { sit: 1 }; }
+    else if (p < 0.05) { ht = WAVE_AT; hp = { carry: 1 }; helper.crate.visible = true; }
+    else if (p < 0.08) { ht = WAVE_AT; hp = { wave: 1 }; }
+    else if (p < 0.9) { ht = BENCH_AT; hp = { sit: 1 }; if (Math.sin(t * 0.5) > 0.85) hp = { sit: 1, wave: 1 }; }
+    else if (p < 0.97) { ht = [0.2, 2.1]; hp = { wave: 1 }; }
+    else { ht = [0.5, 2.0]; hp = { cheer: 1 }; }
+    walkTo(helper, ht[0], ht[1], dt, t, hp, [fp.x, fp.z], opts);
+    // perro: sigue al granjero y se sienta cuando se queda quieto
+    let dt_ = [fp.x - 0.45, fp.z + 0.4], dsit = 0;
+    if (!focus) { dt_ = [2.6, 3.2]; dsit = 1; }
+    else if (Math.hypot(dog.root.position.x - dt_[0], dog.root.position.z - dt_[1]) < 0.4) dsit = 1;
+    walkTo(dog, dt_[0], dt_[1], dt, t, { sit: dsit }, [fp.x, fp.z], { speed: 0.8, ground: farmH });
+    if (fStoryPrev === 'focus' && !focus) { conf.burst(0.4, 1.6, 1.4); fStoryPrev = 'break'; }
+    if (focus && p < 0.5) fStoryPrev = 'focus';
+    conf.update(dt, t);
+  };
+
   const slots = [];
   for (let i = 0; slots.length < 90 && i < 700; i++) {
     const a = i * 2.39996, r = 1.5 + 0.42 * Math.sqrt(i); if (r > 4.15) continue;
@@ -277,7 +317,7 @@ export function buildFarm() {
   const rewards = [];
   let faceYaw = Math.PI, curSit = 0, curBend = 0, curWater = 0;
   const tgt = new THREE.Vector3(), prev = new THREE.Vector3();
-  return { group: g, unlock, startFocus() {},
+  return { group: g, unlock, startFocus() { resetStory(); },
     reward(i, animate) {
       const o = makeFarmReward(i), p = slots[i % slots.length];
       o.position.set(p.x, farmH(p.x, p.z), p.z); o.rotation.y = i * 1.3; g.add(o); rewards.push(o);
@@ -301,10 +341,11 @@ export function buildFarm() {
         stalks.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = stalks.instanceColor.needsUpdate = heads.instanceColor.needsUpdate = true;
       }
       // granjero
-      let walkTarget = true, bend = 0, water = 0, sit = 0;
+      let bend = 0, water = 0, sit = 0, cheer = 0;
       if (!focus) { tgt.set(2.2, 0.05, 2.05); sit = 1; }
       else if (p < 0.62) { const r = Math.min(NC - 1, Math.floor(p / 0.62 * NC)); tgt.set(cl[r].cx, 0.05, cl[r].cz + 0.6); bend = 1; }
-      else { const u = (p - 0.62) / 0.38; tgt.set(lerp(-1.9, 1.9, u), 0.05, 1.5); water = 1; }
+      else if (p >= 0.97) { tgt.set(1.2, 0.05, 1.7); cheer = 1; }
+      else { const u = (p - 0.62) / 0.35; tgt.set(lerp(-1.9, 1.9, u), 0.05, 1.5); water = 1; }
       prev.copy(farmer.root.position);
       farmer.root.position.lerp(tgt, 1 - Math.exp(-dt * 2.2));
       const dist = farmer.root.position.distanceTo(tgt), speed = prev.distanceTo(farmer.root.position) / Math.max(dt, 1e-3);
@@ -314,9 +355,10 @@ export function buildFarm() {
       else faceYaw = Math.PI;
       let dy = faceYaw - farmer.root.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); farmer.root.rotation.y += dy * Math.min(1, dt * 7);
       curBend += ((bend && dist < 0.12 ? 1 : 0) - curBend) * Math.min(1, dt * 6); curSit += (sit - curSit) * Math.min(1, dt * 3); curWater += (water - curWater) * Math.min(1, dt * 4);
-      farmer.update(dt, t, { walk: moving ? Math.min(1, speed * 1.4) : 0, bend: curBend, water: curWater, sit: curSit });
+      farmer.update(dt, t, { walk: moving ? Math.min(1, speed * 1.4) : 0, bend: curBend, water: curWater, sit: curSit, cheer });
       farmer.root.position.y = 0.05;
       camp.update(t, dt, night, focus ? 0 : 1);
+      story(p, focus, t, dt);
       // gallinas
       hens.forEach((h, i) => {
         h.wait -= dt;

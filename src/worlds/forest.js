@@ -2,7 +2,9 @@
 import * as THREE from 'three';
 import { buildIsland, edgeR } from '../lib/island.js';
 import { clamp01, fbm, mulberry, sstep } from '../lib/math.js';
-import { makeCampHD } from '../lib/props.js';
+import { makeActor, walkTo } from '../lib/people.js';
+import { makeConfetti, makeWaterDrops } from '../lib/effects.js';
+import { makeBarrel, makeCampHD } from '../lib/props.js';
 import { blobShadow, dotTex, groundTex, plankTex, rockTex, shingleTex, waterNormal } from '../lib/textures.js';
 import { makeUnlocker, pop, shade } from '../lib/three-utils.js';
 import { makeBlob, makeFlowers, makeGrass, makeMushroom, makeRock, makeTreeHD } from '../lib/vegetation.js';
@@ -162,6 +164,54 @@ export function buildForest() {
     b.add(wl, wr); b.userData = { wl, wr, cx: -1 + i * 1.3, cz: -1.5 + (i % 2) * 2.5, r: 0.9 + i * 0.3, sp: 0.5 + i * 0.12, ph: i * 1.7, h: 0.7 + i * 0.25 }; g.add(b); flies.push(b);
   });
 
+  // ── historia: la guardabosques planta el arbolito, lo riega y lo celebra con una amiga ──
+  const rainBarrel = makeBarrel(); rainBarrel.scale.setScalar(1.3); rainBarrel.rotation.y = 0.4; place(rainBarrel, -1.15, 1.55); avoid.push([-1.15, 1.55, 0.5]);
+  const ranger = makeActor({ shirt: 0x3f7a3a, pants: 0x5a4632, hat: 'cap', capColor: 0x6b4a2e, scale: 0.68 });
+  const friend = makeActor({ shirt: 0xf0c23a, pants: 0x3a5a8a, hair: 0x8a4a2a, scale: 0.52 });
+  g.add(ranger.root, friend.root);
+  const sapling = new THREE.Group();   // arbolito en maceta que lleva en brazos
+  sapling.add(shade(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.12, 10).translate(0, 0.06, 0), new THREE.MeshStandardMaterial({ color: 0xb5603a, roughness: 0.9 }))));
+  sapling.add(shade(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.16, 5).translate(0, 0.2, 0), new THREE.MeshStandardMaterial({ color: 0x6b4a2e }))));
+  [0, 2.1, 4.2].forEach(a => { const lf = shade(new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshStandardMaterial({ color: 0x58b84a, roughness: 0.7 }))); lf.scale.y = 0.6; lf.position.set(Math.cos(a) * 0.05, 0.3, Math.sin(a) * 0.05); sapling.add(lf); });
+  ranger.held.add(sapling);
+  const conf = makeConfetti(g, 100, 0.1), drops = makeWaterDrops(g), dropO = new THREE.Vector3();
+  const SPAWN = [-2.3, 1.85], STAND = [-0.62, 0.5], BARREL_AT = [-0.95, 1.25], WATERINGS = [[0.27, 0.4], [0.52, 0.64], [0.76, 0.88]];
+  let storyPrev = 'focus', friendIn = false;
+  const resetStory = () => { ranger.root.position.set(SPAWN[0], hT(SPAWN[0], SPAWN[1]) + 0.02, SPAWN[1]); ranger.root.rotation.y = 0.9; friend.root.visible = false; friendIn = false; };
+  resetStory();
+  const story = (p, focus, t, dt) => {
+    const opts = { speed: 0.5, ground: hT }; let rt = STAND, rp = {}, pour = false;
+    ranger.held.visible = false;
+    if (!focus) { rt = [0.85, 0.25]; rp = { sit: 1 }; if (Math.sin(t * 0.7) > 0.8) rp.wave = 1; }
+    else if (p < 0.07) { rp = { carry: 1 }; ranger.held.visible = true; }
+    else if (p < 0.11) rp = { bend: 1 };
+    else {
+      const w = WATERINGS.find(([a, b]) => p >= a && p < b);
+      if (w) {
+        const u = (p - w[0]) / (w[1] - w[0]);
+        if (u < 0.3) rt = BARREL_AT; else if (u < 0.42) { rt = BARREL_AT; rp = { bend: 1 }; } else if (u < 0.65) rp = { water: 0.15 }; else { rp = { water: 1 }; pour = true; }
+      } else if (p >= 0.95) { rt = [-0.6, 0.4]; rp = { cheer: 1 }; }
+      else if (p >= 0.88) { rt = [-0.75, 0.7]; rp = { wave: 1 }; }
+      else rt = [-1.0, 0.95];
+    }
+    walkTo(ranger, rt[0], rt[1], dt, t, rp, [0, 0], opts);
+    // la amiga llega al final y se une a la celebración; en el descanso se sientan juntas junto al fuego
+    const showFriend = !focus || p >= 0.85;
+    if (showFriend && !friendIn) { friendIn = true; friend.root.visible = true; if (focus) friend.root.position.set(SPAWN[0], hT(SPAWN[0], SPAWN[1]) + 0.02, SPAWN[1]); else friend.root.position.set(-0.6, hT(-0.6, -0.55) + 0.02, -0.55); }
+    if (friend.root.visible) {
+      let ft = [-0.95, 0.3], fp = {};
+      if (!focus) { ft = [-0.6, -0.55]; fp = { sit: 1 }; } else if (p >= 0.95) fp = { cheer: 1 }; else fp = { wave: 1 };
+      walkTo(friend, ft[0], ft[1], dt, t, fp, [0, 0], opts);
+    }
+    // agua y confeti
+    const fx = Math.sin(ranger.root.rotation.y), fz = Math.cos(ranger.root.rotation.y);
+    dropO.set(ranger.root.position.x + fx * 0.28, ranger.root.position.y + 0.42, ranger.root.position.z + fz * 0.28);
+    drops.update(dt, pour, dropO, fx, fz, hT(dropO.x, dropO.z));
+    if (storyPrev === 'focus' && !focus) { conf.burst(0, 1.5, 0); storyPrev = 'break'; }
+    if (focus && p < 0.5) storyPrev = 'focus';
+    conf.update(dt, t);
+  };
+
   const slots = []; {
     for (let i = 0; slots.length < 90 && i < 700; i++) {
       const a = i * 2.39996, r = 1.7 + 0.42 * Math.sqrt(i); if (r > 4.15) continue;
@@ -173,7 +223,7 @@ export function buildForest() {
   const trees = [];
   const smoothClamp = clamp01;
   return { group: g, unlock,
-    startFocus(n) { if (gt) growing.remove(gt); gt = makeTreeHD(n % 3, n + 1); growing.add(gt); },
+    startFocus(n) { if (gt) growing.remove(gt); gt = makeTreeHD(n % 3, n + 1); growing.add(gt); resetStory(); },
     reward(i, animate) {
       const t = makeTreeHD(i % 3, i + 1), p = slots[i % slots.length], k = 0.8 + ((i * 37) % 10) / 45;
       t.position.set(p.x, hT(p.x, p.z) - 0.03, p.z); t.rotation.y = i * 1.7; g.add(t); trees.push(t);
@@ -184,6 +234,7 @@ export function buildForest() {
       growing.visible = focus;
       if (focus) { const s = 0.05 + 1.15 * THREE.MathUtils.smoothstep(p, 0, 1); gt.scale.setScalar(s); gt.rotation.z = Math.sin(t * 1.3) * 0.015 * s; mound.visible = p < 0.9; }
       camp.update(t, dt, night, focus ? 0 : 1);
+      story(p, focus, t, dt);
       trees.forEach(tr => tr.rotation.z = Math.sin(t * 1.1 + tr.position.x) * 0.01);
       glowMats.forEach(m => m.emissiveIntensity = 0.12 + night * 2.4);
       cab.lampLight.intensity = night * 5; cab.winLight.intensity = night * 3.2;

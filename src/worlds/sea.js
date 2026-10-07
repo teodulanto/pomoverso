@@ -1,7 +1,8 @@
 /** Mundo 3 — Mar abierto: un velero zarpa de un puerto a otro. */
 import * as THREE from 'three';
 import { clamp01, fbm, lerp, mulberry, sstep, vnoise } from '../lib/math.js';
-import { makePerson } from '../lib/people.js';
+import { makeConfetti } from '../lib/effects.js';
+import { drive, makePerson } from '../lib/people.js';
 import { makeBarrel, makeCrate } from '../lib/props.js';
 import { blobShadow, dotTex, plankTex, waterNormal } from '../lib/textures.js';
 import { makeUnlocker, paint, pop, shade, uTime, vcMat } from '../lib/three-utils.js';
@@ -247,21 +248,8 @@ export function buildSea() {
   const deckStack = mkStack(shipO.roll, [[0.5, 0, -0.14], [0.5, 0, 0], [0.5, 0, 0.14], [0.72, 0, -0.1], [0.72, 0, 0.04], [0.72, 0, 0.18]]);
   const mkPlank = a => { const m = shade(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.03, 0.18), new THREE.MeshStandardMaterial({ map: plankTex, color: 0xc9a074 }))); m.position.set(Math.cos(a) * 3.95, 0.21, Math.sin(a) * 3.95); m.rotation.y = -a; m.visible = false; g.add(m); return m; };
   const plankD = mkPlank(A0), plankT = mkPlank(A1);
-  // confeti
-  const CF = 100, cfg = new THREE.BufferGeometry(), cfp = new Float32Array(CF * 3), cfc = new Float32Array(CF * 3), cfv = Array.from({ length: CF }, () => ({ x: 0, y: -9, z: 0, vx: 0, vy: 0, vz: 0 })); let cfLife = 0;
-  cfg.setAttribute('position', new THREE.BufferAttribute(cfp, 3)); cfg.setAttribute('color', new THREE.BufferAttribute(cfc, 3));
-  const cfm = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, depthWrite: false });
-  const confetti = new THREE.Points(cfg, cfm); confetti.frustumCulled = false; confetti.visible = false; g.add(confetti);
-  const palette = [0xff4a6a, 0xffd24a, 0x4ad0ff, 0x6aff8a, 0xb06aff, 0xffffff].map(h => new THREE.Color(h));
-  const burst = (x, y, z) => { cfLife = 5; confetti.visible = true; cfv.forEach((q, i) => { q.x = x + (Math.random() - 0.5) * 1.2; q.y = y + Math.random() * 0.6; q.z = z + (Math.random() - 0.5) * 1.2; q.vx = (Math.random() - 0.5) * 2.6; q.vy = 2.2 + Math.random() * 2.6; q.vz = (Math.random() - 0.5) * 2.6; const c = palette[i % palette.length]; cfc.set([c.r, c.g, c.b], i * 3); }); cfg.attributes.color.needsUpdate = true; };
-  const wp = new THREE.Vector3(), tv = new THREE.Vector3(), pv = new THREE.Vector3();
-  const faceTo = (pr, dx, dz, k) => { let d = Math.atan2(dx, dz) - pr.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); pr.root.rotation.y += d * k; };
-  const drive = (pr, x, y, z, dt, t, pose, lx, lz) => {
-    pv.copy(pr.root.position); pr.root.position.lerp(tv.set(x, y, z), 1 - Math.exp(-dt * 5));
-    const dx = pr.root.position.x - pv.x, dz = pr.root.position.z - pv.z, sp = Math.hypot(dx, dz) / Math.max(dt, 1e-3);
-    if (sp > 0.05) faceTo(pr, dx, dz, Math.min(1, dt * 8)); else faceTo(pr, lx - pr.root.position.x, lz - pr.root.position.z, Math.min(1, dt * 4));
-    pr.update(dt, t, { ...pose, walk: clamp01(sp * 2.2), ph: pr.root.id });
-  };
+  const confetti = makeConfetti(g);
+  const wp = new THREE.Vector3();
   let prevMode = 'focus';
   const people = { update({ p, mode, t, dt }) {
     const focus = mode === 'focus', q = focus ? 0 : p, deckY = ship.position.y + 0.03;
@@ -296,12 +284,8 @@ export function buildSea() {
     if (focus && p < 0.07) { sp2.carry = 0; }
     captain.update(dt, t, { ...cp, ph: 1 }); sailor.update(dt, t, { ...sp2, ph: 3 });
     // confeti al llegar
-    if (prevMode === 'focus' && !focus) { burst(ship.position.x, ship.position.y + 1.0, ship.position.z); burst(rT.pe.x, 1.0, rT.pe.y); prevMode = 'break'; }
-    if (cfLife > 0) {
-      cfLife -= dt; cfm.opacity = clamp01(cfLife / 1.2);
-      cfv.forEach((c, i) => { c.vy -= 4 * dt; c.vx *= 0.99; c.vz *= 0.99; c.x += c.vx * dt; c.y += c.vy * dt + Math.sin(t * 6 + i) * 0.004; c.z += c.vz * dt; cfp[i * 3] = c.x; cfp[i * 3 + 1] = Math.max(0.12, c.y); cfp[i * 3 + 2] = c.z; });
-      cfg.attributes.position.needsUpdate = true; if (cfLife <= 0) confetti.visible = false;
-    }
+    if (prevMode === 'focus' && !focus) { confetti.burst(ship.position.x, ship.position.y + 1.0, ship.position.z); confetti.burst(rT.pe.x, 1.0, rT.pe.y); prevMode = 'break'; }
+    confetti.update(dt, t);
   } };
 
   const TR = 36, trail = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(TR * 3), 3)), new THREE.PointsMaterial({ map: dotTex, color: 0xffffff, size: 0.28, transparent: true, depthWrite: false, opacity: 0.5 })); trail.frustumCulled = false; g.add(trail);

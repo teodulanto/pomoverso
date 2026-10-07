@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildIsland, edgeR } from '../lib/island.js';
 import { clamp01, fbm, mulberry, sstep, vnoise } from '../lib/math.js';
+import { makeConfetti } from '../lib/effects.js';
+import { makeActor, walkTo } from '../lib/people.js';
 import { blobShadow, canvasTex, dotTex, radialTex, rockTex } from '../lib/textures.js';
 import { makeUnlocker, paint, pop, shade, vcMat } from '../lib/three-utils.js';
 import { makeRock } from '../lib/vegetation.js';
@@ -180,13 +182,67 @@ export function buildSpace() {
   tg.setAttribute('position', new THREE.BufferAttribute(tp, 3)); tg.setAttribute('color', new THREE.BufferAttribute(tc, 3));
   const trail = new THREE.Points(tg, new THREE.PointsMaterial({ map: dotTex, vertexColors: true, size: 0.34, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); trail.frustumCulled = false; g.add(trail); let trailT = 0;
 
+  // ── historia: cuenta atrás, el astronauta se despide, la tripulación mira el despegue y celebra la llegada ──
+  const LAUNCH = 0.06;   // el cohete espera en la plataforma hasta este punto del pomodoro
+  const orange = { shirt: 0xf08a24, pants: 0x3a3f4a, hat: 'cap', capColor: 0xf4f4f6 };
+  const techs = [makeActor({ ...orange }), makeActor({ ...orange, shirt: 0xe2c02a })];
+  const astro = makeActor({ shirt: 0xf4f4f6, pants: 0xe8ecf3, hat: 'helmet', backpack: 0xd0d4de });
+  const ctrl = makeActor({ shirt: 0x3a8fd0, pants: 0x2a3548, hair: 0x2a1a10 });
+  g.add(...techs.map(a => a.root), astro.root, ctrl.root);
+  const desk = new THREE.Group();   // puesto de control de misión
+  { const metal = new THREE.MeshStandardMaterial({ color: 0x5a6070, metalness: 0.5, roughness: 0.5 });
+    const top = shade(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.3), metal)); top.position.y = 0.3; desk.add(top);
+    [-0.3, 0.3].forEach(x => { const lg = shade(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.26), metal)); lg.position.set(x, 0.15, 0); desk.add(lg); });
+    const screenMat = new THREE.MeshStandardMaterial({ color: 0x66c8ff, emissive: 0x2a9fe0, emissiveIntensity: 0.9, roughness: 0.2 }); glowMats.push(screenMat);
+    const scr = shade(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.03), screenMat)); scr.position.set(0, 0.5, -0.1); scr.rotation.x = -0.25; desk.add(scr); }
+  desk.position.set(-1.5, spaceH(-1.5, 1.7), 1.7); g.add(desk);
+  const conf = makeConfetti(g, 100, 0.12);
+  const CTRL_AT = [-1.5, 1.35], BASE_AT = [2.9, 1.9], SIDE = [0.95, 0.15];
+  let sPrev = 'focus';
+  const placeA = (a, x, z) => a.root.position.set(x, spaceH(x, z) + 0.02, z);
+  const resetStory = () => {
+    placeA(astro, BASE_AT[0] - 0.9, BASE_AT[1] - 0.2); astro.root.visible = true;
+    placeA(techs[0], 0.9, -1.2); placeA(techs[1], -0.9, -1.1); placeA(ctrl, CTRL_AT[0], CTRL_AT[1]);
+  };
+  resetStory();
+  const story = (p, focus, t, dt) => {
+    const opts = { speed: 0.5, ground: spaceH }, q = focus ? 0 : p;
+    const lift = focus && p >= LAUNCH, rocketAt = [rocket.position.x, rocket.position.z];
+    const celebrate = (focus && p > 0.93) || (!focus && q < 0.2), sitDown = !focus && q >= 0.2;
+    // técnicos: revisan el cohete dando vueltas; al despegar miran hacia arriba
+    techs.forEach((a, k) => {
+      const ang = t * 0.35 + k * Math.PI; let pose = {}, tx = Math.cos(ang) * 1.25, tz = Math.sin(ang) * 1.25;
+      if (lift || !focus) { tx = [0.9, -0.9][k]; tz = -1.2; pose = { lookUp: 1 }; }
+      if (lift && p < 0.12) pose = { lookUp: 1, cheer: 1 };
+      if (celebrate) pose = { cheer: 1, lookUp: 0 };
+      if (sitDown) { pose = { sit: 1, lookUp: 1 }; tx = [-0.6, 0.6][k]; tz = -1.6; }
+      walkTo(a, tx, tz, dt, t, pose, [0, 0], opts);
+    });
+    // astronauta: camina hasta el cohete, se despide y sube a bordo
+    if (focus) {
+      astro.root.visible = p < 0.05;
+      if (astro.root.visible) { const near = Math.hypot(astro.root.position.x - SIDE[0], astro.root.position.z - SIDE[1]) < 0.3; walkTo(astro, SIDE[0], SIDE[1], dt, t, near ? { wave: 1 } : {}, rocketAt, opts); }
+      if (p < 0.02) astro.landed = false;
+    } else {   // vuelve de la misión y se une a la celebración
+      astro.root.visible = true;
+      if (!astro.landed) { astro.landed = true; placeA(astro, 0.4, 1.1); }
+      walkTo(astro, sitDown ? 0.2 : 0.4, sitDown ? -1.7 : 1.1, dt, t, sitDown ? { sit: 1, lookUp: 1 } : { cheer: celebrate ? 1 : 0 }, [0, 0], opts);
+    }
+    // control de misión: trabaja en la consola, hace la cuenta atrás y celebra la llegada
+    const cp = focus && p < LAUNCH ? (p > LAUNCH - 0.015 ? { cheer: 1 } : { steer: 1 }) : celebrate ? { cheer: 1 } : sitDown ? { sit: 1, lookUp: 1 } : focus && p < 0.12 ? { cheer: 1 } : { steer: 1 };
+    walkTo(ctrl, sitDown ? -1.0 : CTRL_AT[0], sitDown ? -1.5 : CTRL_AT[1], dt, t, cp, sitDown ? [0, 0] : [desk.position.x, desk.position.z], opts);
+    if (sPrev === 'focus' && !focus) { conf.burst(0.0, 1.8, 0.4); sPrev = 'break'; }
+    if (focus && p < 0.5) sPrev = 'focus';
+    conf.update(dt, t);
+  };
+
   const slots = []; for (let i = 0; i < 40; i++) slots.push({ r: 2.3 + (i % 5) * 0.6, y: 1.4 + (i % 7) * 0.75 });
   const sats = [];
   const S0 = new THREE.Vector3(0, 0.22, 0), E0 = PLANET.clone().add(new THREE.Vector3(2.8, -0.3, 2.8));
   const path = (p, out) => { const e = THREE.MathUtils.smootherstep(p, 0, 1), w = Math.sin(Math.PI * p) * 0.6; return out.lerpVectors(S0, E0, e).add(new THREE.Vector3(Math.cos(p * 14) * w, 0, Math.sin(p * 14) * w)); };
   const UP = new THREE.Vector3(0, 1, 0), P1 = new THREE.Vector3(), P2 = new THREE.Vector3(), dir = new THREE.Vector3();
   let brk0 = 0, prev = 'focus', roverA = 0;
-  return { group: g, unlock, startFocus() { trailP.length = 0; },
+  return { group: g, unlock, startFocus() { trailP.length = 0; resetStory(); },
     reward(i, animate) {
       const s = makeSatHD(i), u = slots[i % slots.length]; s.userData.o = { r: u.r, y: u.y, ph: i * 1.3, sp: 0.2 + (i % 4) * 0.05, i };
       s.scale.setScalar(0.7); g.add(s); sats.push(s); if (animate) pop(s, 0.7);
@@ -197,7 +253,7 @@ export function buildSpace() {
       planetG.rotation.y += dt * 0.08; moonM.position.set(Math.cos(t * 0.35) * 3.4, Math.sin(t * 0.35) * 0.5, Math.sin(t * 0.35) * 3.4);
       let launching = false;
       if (focus) {
-        path(p, P1); path(Math.min(1, p + 0.01), P2); dir.subVectors(P2, P1).normalize().lerp(UP, 1 - THREE.MathUtils.smoothstep(p, 0, 0.1)).normalize(); rocket.position.copy(P1); launching = p > 0.002;
+        const pp = clamp01((p - LAUNCH) / (1 - LAUNCH)); path(pp, P1); path(Math.min(1, pp + 0.01), P2); dir.subVectors(P2, P1).normalize().lerp(UP, 1 - THREE.MathUtils.smoothstep(pp, 0, 0.1)).normalize(); rocket.position.copy(P1); launching = p > LAUNCH + 0.002;
       } else {
         const a = Math.PI / 4 + (t - brk0) * 0.5; P1.set(PLANET.x + Math.cos(a) * 3.96, PLANET.y - 0.3, PLANET.z + Math.sin(a) * 3.96); rocket.position.copy(P1); dir.set(-Math.sin(a), 0.1, Math.cos(a)).normalize();
       }
@@ -211,7 +267,7 @@ export function buildSpace() {
       for (let i = 0; i < TL; i++) { const q = trailP[i]; if (q) { q.age += dt; const k = clamp01(1 - q.age / 2.2); tp.set([q.x + Math.sin(q.age * 5 + i) * 0.05, q.y, q.z], i * 3); const c = new THREE.Color(0xff8a2a).lerp(new THREE.Color(0x553322), 1 - k).multiplyScalar(k); tc.set([c.r, c.g, c.b], i * 3); } else { tp.set([0, -50, 0], i * 3); tc.set([0, 0, 0], i * 3); } }
       tg.attributes.position.needsUpdate = tg.attributes.color.needsUpdate = true;
       // humo en la plataforma durante el despegue
-      const pu = focus ? 1 - sstep(0.0, 0.07, p) : 0; smoke.material.opacity = 0.55 * pu * (p > 0.0003 ? 1 : 0.0);
+      const pu = focus ? 1 - sstep(0.0, 1.0, clamp01((p - LAUNCH) / 0.07)) : 0; smoke.material.opacity = 0.55 * pu * (p > LAUNCH ? 1 : 0.0);
       smd.forEach((s, i) => { s.life = (s.life + dt * 0.4) % 1; const u = s.life; smp[i * 3] = Math.cos(s.a) * (0.3 + u * 1.3); smp[i * 3 + 1] = 0.2 + u * 0.5; smp[i * 3 + 2] = Math.sin(s.a) * (0.3 + u * 1.3); }); smg.attributes.position.needsUpdate = true;
       // vida del asteroide
       gantry.userData.beacon.visible = Math.sin(t * 4) > 0; baseO.led.visible = Math.sin(t * 3 + 1) > 0; baseO.light.intensity = night * 3 + 1; flagM.geometry.attributes.position.needsUpdate = true;
@@ -219,6 +275,7 @@ export function buildSpace() {
       roverA += dt * 0.25; const rr = 2.9; rover.position.set(Math.cos(roverA) * rr, spaceH(Math.cos(roverA) * rr, Math.sin(roverA) * rr) + 0.09, Math.sin(roverA) * rr); rover.rotation.y = -roverA - Math.PI / 2; rover.userData.wheels.forEach(w => w.rotation.z -= dt * 3);
       crystalLights.forEach((l, i) => l.intensity = 2.0 + Math.sin(t * 1.4 + i) * 0.5);
       ufo.position.y = 2.9 + Math.sin(t * 1.4) * 0.18; ufo.rotation.y += dt * 0.8; ufo.userData.lights.forEach((l, i) => l.visible = Math.sin(t * 6 + i * 0.8) > -0.3); ufo.userData.beam.material.opacity = 0.1 + Math.sin(t * 2) * 0.04;
+      story(p, focus, t, dt);
       sats.forEach(s => { const u = s.userData.o, a = u.ph + t * u.sp; s.position.set(Math.cos(a) * u.r, u.y + Math.sin(a * 2) * 0.1, Math.sin(a) * u.r); s.rotation.y = -a; s.userData.led.visible = Math.sin(t * 5 + u.i) > 0; });
       shootT -= dt; if (shootT < 0) { shoot.userData.u = 0; shootT = 5 + Math.random() * 6; shoot.userData.y = 10 + Math.random() * 8; shoot.userData.x = -20 - Math.random() * 10; }
       if (shoot.userData.u !== undefined && shoot.userData.u <= 1) { const u = (shoot.userData.u += dt * 1.1); shoot.position.set(shoot.userData.x + u * 30, shoot.userData.y - u * 8, -30); shoot.rotation.z = -0.25; shoot.material.opacity = Math.sin(clamp01(u) * Math.PI) * 0.9 * night; }
