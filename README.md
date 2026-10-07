@@ -4,7 +4,7 @@ Un temporizador Pomodoro gamificado en 3D. Cada pomodoro que completas hace crec
 
 ## Cómo usarlo
 
-Online: https://pomoverso-swart.vercel.app
+Online: https://pomo-verso.vercel.app
 
 O en local: abre `index.html` en el navegador (necesita conexión: carga Three.js desde jsDelivr).
 
