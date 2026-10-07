@@ -4,7 +4,9 @@ Un temporizador Pomodoro gamificado en 3D. Cada pomodoro que completas hace crec
 
 ## Cómo usarlo
 
-Abre `index.html` en el navegador (necesita conexión: carga Three.js desde jsDelivr).
+Online: https://pomoverso-swart.vercel.app
+
+O en local: abre `index.html` en el navegador (necesita conexión: carga Three.js desde jsDelivr).
 
 - Elige el tiempo con los botones (5, 15, 25, 45 o 60 min) o en Ajustes.
 - **Iniciar** / **Espacio**: empieza o pausa. Durante el pomodoro el reloj pasa a la esquina para ver el mundo.
