@@ -163,6 +163,11 @@
   </div>
 </div>
 
+<script>
+  // Analítica de visitas de Vercel (sin cookies). Solo funciona cuando la app está publicada en Vercel.
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
 <div id="errbox" style="display:none;position:fixed;z-index:99;left:8px;right:8px;top:8px;padding:10px 14px;background:#7a1f1f;color:#fff;font:12px monospace;border-radius:8px;white-space:pre-wrap"></div>
 <script>
   const showErr = m => { const b = document.getElementById('errbox'); b.style.display = 'block'; b.textContent += m + '
